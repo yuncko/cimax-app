@@ -107,6 +107,12 @@ export type Messages = {
     tapToStart: string;
     tapOnce: string;
     preparing: string;
+    arabicBeta: string;
+    arabicBetaHint: string;
+    fastest: string;
+    noArabicSource: string;
+    checkingArabic: string;
+    directVideo: string;
   };
   misc: {
     error: string;
@@ -216,6 +222,12 @@ export const messages: Record<Locale, Messages> = {
       tapToStart: "اضغط لبدء المشاهدة",
       tapOnce: "اضغط مرة واحدة قبل التفاعل مع المشغّل",
       preparing: "جاري تجهيز المشغّل…",
+      arabicBeta: "العربية — مباشر (تجريبي)",
+      arabicBetaHint: "يجمع أسرع رابط عربي من عدة مواقع — قد يستغرق بضع ثوانٍ",
+      fastest: "الأسرع",
+      noArabicSource: "لا يوجد مصدر عربي لهذا العمل حالياً — سيُعرض البديل",
+      checkingArabic: "جاري البحث عن مصادر عربية…",
+      directVideo: "فيديو مباشر",
     },
     misc: {
       error: "حدث خطأ في تحميل البيانات",
@@ -323,6 +335,12 @@ export const messages: Record<Locale, Messages> = {
       tapToStart: "Tap to start watching",
       tapOnce: "Tap once before interacting with the player",
       preparing: "Preparing the player…",
+      arabicBeta: "Arabic — Direct (Beta)",
+      arabicBetaHint: "Finds the fastest Arabic source across sites — may take a few seconds",
+      fastest: "Fastest",
+      noArabicSource: "No Arabic source for this title yet — showing fallback",
+      checkingArabic: "Searching Arabic sources…",
+      directVideo: "Direct video",
     },
     misc: {
       error: "Something went wrong while loading data",

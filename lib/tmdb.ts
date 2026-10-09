@@ -112,6 +112,7 @@ export function serverName(server: Server, locale: string): string {
 }
 
 export const SERVERS: Server[] = [
+  { id: "arabic-beta", ar: true,  blockPopups: false },
   { id: "xullys",     ar: false, blockPopups: true  },
   { id: "nextbox",    ar: false, blockPopups: true  },
   { id: "moviebite",  ar: false, blockPopups: true  },

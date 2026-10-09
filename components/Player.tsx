@@ -12,6 +12,9 @@ import {
 import { localeConfig } from "@/lib/i18n";
 import { FavBtn, PosterCard, Rating } from "./ui";
 import { EmbedPlayer } from "./EmbedPlayer";
+import { ArabicUnifiedPlayer } from "./ArabicUnifiedPlayer";
+import { fetchUnifiedSourcesClient } from "@/lib/unifiedClient";
+import type { UnifiedSourceClient } from "@/lib/unifiedClient";
 import { useLanguage } from "./LanguageProvider";
 
 export function VideoPlayer({
@@ -23,6 +26,9 @@ export function VideoPlayer({
   const [server, setServer] = useState(SERVERS[0].id);
   const [reloadKey, setReloadKey] = useState(0);
   const [unprotected, setUnprotected] = useState<Set<string>>(() => new Set());
+  const [arabicSources, setArabicSources] = useState<UnifiedSourceClient[] | null>(null);
+  const [arabicLoading, setArabicLoading] = useState(false);
+  const [arabicError, setArabicError] = useState<string | null>(null);
 
   /* تذكّر آخر سيرفر اختاره المستخدم + السيرفرات المُوقفة حمايتها */
   useEffect(() => {
@@ -61,39 +67,109 @@ export function VideoPlayer({
     setReloadKey(k => k + 1);
   }, [server, season, episode]);
 
+  // Arabic Beta — fetch fastest unified source when this server is selected
+  useEffect(() => {
+    if (server !== "arabic-beta") {
+      setArabicSources(null);
+      setArabicError(null);
+      setArabicLoading(false);
+      return;
+    }
+    const title = String(item.title || item.name || "").trim();
+    if (!title) {
+      setArabicError(t.player.noArabicSource);
+      return;
+    }
+    let alive = true;
+    setArabicLoading(true);
+    setArabicError(null);
+    setArabicSources(null);
+    fetchUnifiedSourcesClient(item.id, type, title, season, episode, locale)
+      .then((res) => {
+        if (!alive) return;
+        if (!res || res.sources.length === 0) {
+          setArabicError(res?.error || t.player.noArabicSource);
+          setArabicSources(null);
+        } else {
+          setArabicSources(res.sources);
+        }
+      })
+      .catch((e) => {
+        if (!alive) return;
+        setArabicError(e instanceof Error ? e.message : t.player.noArabicSource);
+        setArabicSources(null);
+      })
+      .finally(() => {
+        if (alive) setArabicLoading(false);
+      });
+    return () => { alive = false; };
+  }, [server, item.id, type, season, episode, locale, item.title, item.name, t.player.noArabicSource]);
+
+  const isArabicBeta = server === "arabic-beta";
+
   return (
     <div className="space-y-3">
-      <EmbedPlayer
-        src={url}
-        title={`${serverLabel} — ${item.title || item.name || t.player.playerFallback}`}
-        reloadKey={`${reloadKey}-${server}-${season}-${episode}`}
-        accent="blue"
-        blockPopups={blockPopups}
-        aspect
-      />
+      {isArabicBeta ? (
+        arabicLoading ? (
+          <div className="flex aspect-video w-full flex-col items-center justify-center gap-3 rounded-xl bg-zinc-950 ring-1 ring-white/10">
+            <Loader2 className="animate-spin text-amber-400" size={28} />
+            <span className="text-xs text-zinc-400">{t.player.checkingArabic}</span>
+            <span className="text-[11px] text-zinc-600">{item.title || item.name}</span>
+          </div>
+        ) : arabicError || !arabicSources?.length ? (
+          <div className="flex aspect-video w-full flex-col items-center justify-center gap-3 rounded-xl bg-zinc-950 p-6 text-center ring-1 ring-white/10">
+            <p className="text-sm font-bold text-zinc-300">{arabicError || t.player.noArabicSource}</p>
+            <p className="text-xs text-zinc-500">{t.player.arabicBetaHint}</p>
+            <button
+              onClick={() => pickServer(SERVERS[1].id)}
+              className="mt-2 rounded-full bg-white px-4 py-1.5 text-xs font-black text-black"
+            >
+              {locale === "en" ? "Use fallback server" : "استخدم السيرفر البديل"}
+            </button>
+          </div>
+        ) : (
+          <ArabicUnifiedPlayer sources={arabicSources} title={String(item.title || item.name || "")} />
+        )
+      ) : (
+        <EmbedPlayer
+          src={url}
+          title={`${serverLabel} — ${item.title || item.name || t.player.playerFallback}`}
+          reloadKey={`${reloadKey}-${server}-${season}-${episode}`}
+          accent="blue"
+          blockPopups={blockPopups}
+          aspect
+        />
+      )}
 
-      {/* حالة الحماية + مفتاح التبديل */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-zinc-900/60 px-3 py-2">
-        <p className="text-[11px] leading-5 text-zinc-400">
-          {blockPopups ? (
-            <>🛡 <strong className="text-emerald-400">{t.player.protectionOn}</strong> — {t.player.protectionOnHint} <span dir="ltr" className="text-zinc-500">Sandbox
-            Not Allowed</span> {t.player.protectionOnHintEnd}</>
-          ) : (
-            <>⚠️ <strong className="text-amber-400">{t.player.protectionOff}</strong> — {t.player.protectionOffHint}</>
+      {/* حالة الحماية + مفتاح التبديل — hidden for Arabic Beta (native <video>) */}
+      {!isArabicBeta && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-zinc-900/60 px-3 py-2">
+          <p className="text-[11px] leading-5 text-zinc-400">
+            {blockPopups ? (
+              <>🛡 <strong className="text-emerald-400">{t.player.protectionOn}</strong> — {t.player.protectionOnHint} <span dir="ltr" className="text-zinc-500">Sandbox
+              Not Allowed</span> {t.player.protectionOnHintEnd}</>
+            ) : (
+              <>⚠️ <strong className="text-amber-400">{t.player.protectionOff}</strong> — {t.player.protectionOffHint}</>
+            )}
+          </p>
+          {serverMeta?.blockPopups !== false && (
+            <button
+              onClick={toggleProtection}
+              className={`flex-shrink-0 rounded-full px-3 py-1.5 text-[11px] font-extrabold transition
+                ${blockPopups
+                  ? "bg-zinc-800 text-zinc-300 hover:bg-amber-500/20 hover:text-amber-300"
+                  : "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"}`}
+            >
+              {blockPopups ? t.player.retryWithoutProtection : t.player.enableProtection}
+            </button>
           )}
+        </div>
+      )}
+      {isArabicBeta && arabicSources && arabicSources.length > 0 && (
+        <p className="rounded-lg bg-amber-400/10 px-3 py-2 text-[11px] leading-5 text-amber-300 ring-1 ring-amber-400/20" title={t.player.arabicBetaHint}>
+          ✓ {t.player.arabicBeta} — {t.player.directVideo} · {arabicSources.length} {locale === "en" ? "sources" : "مصادر"} · {t.player.fastest}: {arabicSources[0].label}
         </p>
-        {serverMeta?.blockPopups !== false && (
-          <button
-            onClick={toggleProtection}
-            className={`flex-shrink-0 rounded-full px-3 py-1.5 text-[11px] font-extrabold transition
-              ${blockPopups
-                ? "bg-zinc-800 text-zinc-300 hover:bg-amber-500/20 hover:text-amber-300"
-                : "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"}`}
-          >
-            {blockPopups ? t.player.retryWithoutProtection : t.player.enableProtection}
-          </button>
-        )}
-      </div>
+      )}
 
       {server === "vidking" && (
         <a
@@ -113,36 +189,44 @@ export function VideoPlayer({
         </p>
         <div className="flex gap-2 overflow-x-auto pb-1
           [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1">
-          {SERVERS.map(s => s.locked ? (
-            /* سيرفر مقفل — خلفية سوداء وقفل متحرك، غير قابل للاختيار */
-            <button key={s.id} disabled title={t.player.lockedServer}
-              className="flex flex-shrink-0 cursor-not-allowed items-center gap-1.5 rounded-full
-                border border-white/10 bg-black px-3.5 py-1.5 text-[12px] font-bold text-zinc-600">
-              <Lock size={11} className="lock-jiggle text-zinc-500" />
-              {serverName(s, locale)}
-            </button>
-          ) : (
-            <button key={s.id} onClick={() => pickServer(s.id)}
-              className={`flex flex-shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] font-bold transition
-                ${server === s.id
-                  ? "bg-white border-white text-black"
-                  : "bg-[#15151a] border-white/10 text-zinc-300 hover:border-white/40 hover:text-white"}`}>
-              {s.ar && (
-                <span className="flex h-3.5 w-3.5 items-center justify-center rounded-[3px]
-                  bg-emerald-500/20 ring-1 ring-emerald-400/50 text-[8px] font-extrabold text-emerald-400">
-                  AR
-                </span>
-              )}
-              {s.blockPopups !== false && !unprotected.has(s.id) && (
-                <span className="flex h-3.5 w-3.5 items-center justify-center rounded-[3px]
-                  bg-sky-500/20 ring-1 ring-sky-400/50 text-[8px] font-extrabold text-sky-400"
-                  title={t.player.popupBlock}>
-                  🛡
-                </span>
-              )}
-              {serverName(s, locale)}
-            </button>
-          ))}
+          {SERVERS.map(s => {
+            if (s.locked) return (
+              <button key={s.id} disabled title={t.player.lockedServer}
+                className="flex flex-shrink-0 cursor-not-allowed items-center gap-1.5 rounded-full
+                  border border-white/10 bg-black px-3.5 py-1.5 text-[12px] font-bold text-zinc-600">
+                <Lock size={11} className="lock-jiggle text-zinc-500" />
+                {serverName(s, locale)}
+              </button>
+            );
+            const isBeta = s.id === "arabic-beta";
+            const label = isBeta ? t.player.arabicBeta : serverName(s, locale);
+            return (
+              <button key={s.id} onClick={() => pickServer(s.id)} title={isBeta ? t.player.arabicBetaHint : undefined}
+                className={`flex flex-shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] font-bold transition
+                  ${server === s.id
+                    ? "bg-white border-white text-black"
+                    : isBeta
+                      ? "bg-amber-400/15 border-amber-400/40 text-amber-300 hover:border-amber-400/70 hover:text-amber-200"
+                      : "bg-[#15151a] border-white/10 text-zinc-300 hover:border-white/40 hover:text-white"}`}>
+                {isBeta ? (
+                  <span className="flex items-center justify-center rounded-[3px] bg-amber-400 px-1 py-0.5 text-[8px] font-black leading-none text-black">BETA</span>
+                ) : s.ar ? (
+                  <span className="flex h-3.5 w-3.5 items-center justify-center rounded-[3px]
+                    bg-emerald-500/20 ring-1 ring-emerald-400/50 text-[8px] font-extrabold text-emerald-400">
+                    AR
+                  </span>
+                ) : null}
+                {s.blockPopups !== false && !unprotected.has(s.id) && !isBeta && (
+                  <span className="flex h-3.5 w-3.5 items-center justify-center rounded-[3px]
+                    bg-sky-500/20 ring-1 ring-sky-400/50 text-[8px] font-extrabold text-sky-400"
+                    title={t.player.popupBlock}>
+                    🛡
+                  </span>
+                )}
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
